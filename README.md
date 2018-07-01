@@ -1,2 +1,2 @@
-# booze
+# booze 🍻
 Golang Websocket RPC implementation 
