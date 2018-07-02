@@ -18,7 +18,7 @@ var (
 	HandlerAlreadyExist = errors.New("handler already exist")
 )
 
-type RPCHandlerFunc func(ctx context.Context, payload *Payload) (interface{}, Error)
+type RPCHandlerFunc func(ctx context.Context, payload *Payload) (interface{}, *Error)
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -41,6 +41,12 @@ const (
 
 type RPCHandler struct {
 	methods map[string]RPCHandlerFunc
+}
+
+func NewRPCHandler() *RPCHandler {
+	return &RPCHandler{
+		methods: make(map[string]RPCHandlerFunc),
+	}
 }
 
 func (h *RPCHandler) Register(methodName string, handlerFunc RPCHandlerFunc) {
@@ -71,7 +77,7 @@ func (h *RPCHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, message, err := conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("error: %v", err)
+				log.Printf("unexpected connection error: %v", err)
 			}
 			return
 		}
@@ -82,7 +88,7 @@ func (h *RPCHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				requests = append(requests, value)
 			})
 			if err != nil {
-				resp := Response{Error: ParseError}
+				resp := Response{Error: &ParseError}
 				resp.Error.Data = err.Error()
 				responseChan <- &resp
 				continue
@@ -93,7 +99,7 @@ func (h *RPCHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				for i := 0; i < len(requests); i++ {
 					wg.Add(1)
 					go func(requestNum int) {
-						responses[i] = h.handle(r.Context(), requests[i])
+						responses[requestNum] = h.handle(r.Context(), requests[requestNum])
 						wg.Done()
 					}(i)
 				}
@@ -110,17 +116,17 @@ func (h *RPCHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (h *RPCHandler) handle(ctx context.Context, data []byte) *Response {
 	var resp Response
-	var payload *Payload
+	var payload Payload
 
-	err := json.Unmarshal(data, payload)
+	err := json.Unmarshal(data, &payload)
 	if err != nil {
 		switch err.(type) {
 		case *json.UnmarshalTypeError:
-			resp.Error = InvalidParams
-		case *json.SyntaxError:
-			resp.Error = ParseError
+			resp.Error = &InvalidParams
+		case *json.SyntaxError, *json.InvalidUnmarshalError:
+			resp.Error = &ParseError
 		default:
-			resp.Error = InternalError
+			resp.Error = &InternalError
 		}
 		resp.Error.Data = err.Error()
 		return &resp
@@ -129,14 +135,17 @@ func (h *RPCHandler) handle(ctx context.Context, data []byte) *Response {
 	rpcHandler, exist := h.methods[payload.Method]
 	if !exist {
 		resp.ID = payload.ID
-		resp.Error = MethodNotFound
+		resp.Error = &MethodNotFound
 		return &resp
 	}
 
-	result, handlerError := rpcHandler(ctx, payload)
+	result, handlerError := rpcHandler(ctx, &payload)
 	resp.ID = payload.ID
-	resp.Error = handlerError
-	resp.Result = result
+	if handlerError != nil {
+		resp.Error = handlerError
+	} else {
+		resp.Result = result
+	}
 
 	return &resp
 }
@@ -164,7 +173,7 @@ func (h *RPCHandler) writeResponses(responses chan interface{}, conn *websocket.
 
 			err := conn.WriteJSON(response)
 			if err != nil {
-				log.Printf("shit happens: %s\n", err)
+				log.Printf("can not write response: %s\n", err)
 				return
 			}
 
@@ -172,7 +181,7 @@ func (h *RPCHandler) writeResponses(responses chan interface{}, conn *websocket.
 			for i := 0; i < n; i++ {
 				err := conn.WriteJSON(<-responses)
 				if err != nil {
-					log.Printf("shit happens: %s\n", err)
+					log.Printf("can not write response: %s\n", err)
 					return
 				}
 			}

@@ -29,7 +29,7 @@ func (v RPCVersion20) MarshalJSON() ([]byte, error) {
 
 type Response struct {
 	ID         string       `json:"id"`
-	Error      Error        `json:"error,omitempty"`
+	Error      *Error       `json:"error,omitempty"`
 	Result     interface{}  `json:"result,omitempty"`
 	RPCVersion RPCVersion20 `json:"jsonrpc"`
 }
