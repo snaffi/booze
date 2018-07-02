@@ -48,6 +48,7 @@ Input data format
     "params": {
         "message": "hi"
     }
+    "jsonrpc":"2.0",
 }
 
 ```
