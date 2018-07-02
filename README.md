@@ -2,7 +2,6 @@
 Golang Websocket JSONRPC 2.0 implementation 
 
 ## Usage
-How to setup use RPC handler
 
 ```go
 import (
