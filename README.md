@@ -1,5 +1,5 @@
 # booze 🍻
-Golang Websocket JSONRPC 2.0 implementation 
+Golang Websocket JSON-RPC 2.0 implementation 
 
 ## Usage
 
